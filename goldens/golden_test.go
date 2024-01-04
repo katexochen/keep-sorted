@@ -116,6 +116,10 @@ func TestGoldens(t *testing.T) {
 }
 
 func showTopLevel(dir string) (string, error) {
+	gitDir := os.Getenv("GIT_DIR")
+	if gitDir != "" {
+		return gitDir, nil
+	}
 	b, err := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel").Output()
 	return strings.TrimSpace(string(b)), err
 }
