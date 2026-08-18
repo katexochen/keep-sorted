@@ -259,15 +259,48 @@ func (b block) sorted() (sorted []string, alreadySorted bool) {
 	}
 
 	removedDuplicate := false
-	if b.metadata.opts.RemoveDuplicates {
-		seen := map[string]bool{}
+	if b.metadata.opts.RemoveDuplicates != DuplicateResolutionFalse {
+		seenStrings := map[string]bool{}
+		seenLines := map[string]*lineGroup{}
+		seenComments := map[string]map[string]bool{}
 		var deduped []*lineGroup
 		for _, lg := range groups {
-			if s := lg.String(); !seen[s] {
-				seen[s] = true
-				deduped = append(deduped, lg)
+			if b.metadata.opts.RemoveDuplicates == DuplicateResolutionTrue {
+				if s := lg.String(); !seenStrings[s] {
+					seenStrings[s] = true
+					deduped = append(deduped, lg)
+				} else {
+					removedDuplicate = true
+				}
 			} else {
-				removedDuplicate = true
+				codeMapKey := strings.Join(lg.lines, "\n")
+
+				if firstLg, ok := seenLines[codeMapKey]; !ok {
+					seenLines[codeMapKey] = lg
+					deduped = append(deduped, lg)
+					if b.metadata.opts.RemoveDuplicates == DuplicateResolutionMergeComments && len(lg.comment) > 0 {
+						seenComments[codeMapKey] = map[string]bool{strings.Join(lg.comment, "\n"): true}
+					}
+				} else {
+					removedDuplicate = true
+
+					if b.metadata.opts.RemoveDuplicates == DuplicateResolutionMergeComments {
+						if len(lg.comment) > 0 {
+							commentKey := strings.Join(lg.comment, "\n")
+							if sc, ok := seenComments[codeMapKey]; !ok {
+								seenComments[codeMapKey] = map[string]bool{commentKey: true}
+								firstLg.comment = slices.Clone(lg.comment)
+							} else if !sc[commentKey] {
+								sc[commentKey] = true
+								firstLg.comment = append(slices.Clone(firstLg.comment), lg.comment...)
+							}
+						}
+					} else if b.metadata.opts.RemoveDuplicates == DuplicateResolutionKeepFirstComment {
+						if len(firstLg.comment) == 0 && len(lg.comment) > 0 {
+							firstLg.comment = lg.comment
+						}
+					}
+				}
 			}
 		}
 		groups = deduped
